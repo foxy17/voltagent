@@ -8,7 +8,6 @@ import type {
     StepWithContent,
     StreamTextOptions,
     UsageInfo,
-    ProviderOptions,
   } from "@voltagent/core";
 import {
     GoogleGenAI, 
@@ -16,6 +15,7 @@ import {
     type GenerateContentParameters,
     type GenerateContentResponse,
     type GenerateContentConfig,
+    type GenerateContentResponseUsageMetadata,
   } from "@google/genai";
 import type { z } from "zod";
 import { GoogleGenAIProviderOptions } from "./types";
@@ -42,8 +42,7 @@ export class GoogleGenAIProvider
       }
 
       this.ai = new GoogleGenAI({apiKey: options.apiKey,vertexai: options.vertexai,project: options.project,location: options.location});  
-  
-      // Bind methods to preserve 'this' context
+
       this.generateText = this.generateText.bind(this);
       this.streamText = this.streamText.bind(this);
       this.toMessage = this.toMessage.bind(this);
@@ -104,9 +103,8 @@ export class GoogleGenAIProvider
     };
   
   
-     private _createStepFromChunk(chunkResponse: GenerateContentResponse, role: MessageRole = "assistant", usage?: UsageInfo ): StepWithContent | null {
+    private _createStepFromChunk(chunkResponse: GenerateContentResponse, role: MessageRole = "assistant", usage?: UsageInfo ): StepWithContent | null {
       const text = chunkResponse.text;
-  
       if (text) {
           return {
               id: "",
@@ -116,9 +114,18 @@ export class GoogleGenAIProvider
               usage: usage,
           };
       }
-  
       return null;
-  }
+    }
+
+    private _getUsageInfo(usageInfo: GenerateContentResponseUsageMetadata | undefined ): UsageInfo | undefined {
+      if (!usageInfo) return undefined;
+      
+      return {
+        promptTokens: usageInfo.promptTokenCount ?? 0,
+        completionTokens: usageInfo.candidatesTokenCount ?? 0,
+        totalTokens: usageInfo.totalTokenCount ?? 0,
+      };
+    }
   
   
     generateText = async (
@@ -126,9 +133,8 @@ export class GoogleGenAIProvider
     ): Promise<ProviderTextResponse<GenerateContentResponse>> => {
       const model = options.model;
       const contents = options.messages.map(this.toMessage);
-      const providerOptions: ProviderOptions = options.provider || {};
+      const providerOptions = options.provider || {};
 
-  
       const config: GenerateContentConfig = {
         temperature: providerOptions.temperature,
         topP: providerOptions.topP,
@@ -158,18 +164,14 @@ export class GoogleGenAIProvider
       const finishReason = result.candidates?.[0]?.finishReason?.toString(); 
 
       if (options.onStepFinish) {
-        const step = this._createStepFromChunk(result, "assistant", usageInfo);
+        const step = this._createStepFromChunk(result, "assistant", this._getUsageInfo(usageInfo));
         if(step) await options.onStepFinish(step);
       }
 
       const providerResponse: ProviderTextResponse<GenerateContentResponse> = {
           provider: result,  
           text: responseText ?? "",  
-          usage: usageInfo ? {
-            promptTokens: usageInfo.promptTokenCount ,
-            completionTokens: usageInfo.candidatesTokenCount ?? 0,
-            totalTokens: usageInfo.totalTokenCount ?? 0,
-          } : undefined, 
+          usage: this._getUsageInfo(usageInfo), 
           finishReason: finishReason, 
           // toolCalls: undefined, 
           // toolResults: undefined, 
