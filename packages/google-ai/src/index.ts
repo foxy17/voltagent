@@ -5,24 +5,33 @@ import {
   type GenerateContentResponse,
   type GenerateContentResponseUsageMetadata,
   GoogleGenAI,
+  type GoogleGenAIOptions,
 } from "@google/genai";
 import type {
   BaseMessage,
-  GenerateTextOptions,
   LLMProvider,
   MessageRole,
   ProviderTextResponse,
   ProviderTextStreamResponse,
   StepWithContent,
-  StreamTextOptions,
   UsageInfo,
 } from "@voltagent/core";
-import type { GoogleGenAIProviderOptions, GoogleGenerateContentStreamResult } from "./types";
+import type {
+  GoogleGenerateContentStreamResult,
+  GoogleGenerateTextOptions,
+  GoogleProviderRuntimeOptions,
+  GoogleStreamTextOptions,
+} from "./types";
 
+type StreamProcessingState = {
+  accumulatedText: string;
+  finalUsage?: UsageInfo;
+  finalFinishReason?: string;
+};
 export class GoogleGenAIProvider implements LLMProvider<string> {
   private ai: GoogleGenAI;
 
-  constructor(options: GoogleGenAIProviderOptions) {
+  constructor(options: GoogleGenAIOptions) {
     const hasApiKey = !!options?.apiKey;
     const hasVertexAIConfig = options.vertexai && options.project && options.location;
 
@@ -32,12 +41,13 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
       );
     }
 
-    this.ai = new GoogleGenAI({
-      apiKey: options.apiKey,
-      vertexai: options.vertexai,
-      project: options.project,
-      location: options.location,
-    });
+    if (hasApiKey && hasVertexAIConfig) {
+      throw new Error(
+        "Google GenAI API key and Vertex AI project/location cannot both be provided.",
+      );
+    }
+
+    this.ai = new GoogleGenAI(options);
 
     this.generateText = this.generateText.bind(this);
     this.streamText = this.streamText.bind(this);
@@ -53,7 +63,6 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
     return model;
   };
 
-  // Helper to convert BaseMessage role to Google Gen AI role
   private toGoogleRole(role: MessageRole): "user" | "model" {
     switch (role) {
       case "user":
@@ -64,9 +73,6 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
         console.warn(`System role conversion might require specific handling. Mapping to 'model'.`);
         return "model";
       case "tool":
-        // Google GenAI uses FunctionResponse parts for tool results, mapped to the 'function' role (internally represented).
-        // When sending tool messages *back* to the model, they should be part of the 'user' or 'model' content array.
-        // Mapping to 'model' as a placeholder, but requires proper FunctionResponse formatting.
         console.warn(
           `Tool role conversion to Google GenAI format is complex. Mapping to 'model' as placeholder.`,
         );
@@ -92,14 +98,12 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
         if (part.type === "text") {
           return { text: part.text };
         }
-        // TODO: Add mapping for image parts, etc.
         console.warn(`Unsupported part type: ${part.type}. Skipping.`);
-        return null; // Filter out unsupported parts
+        return null;
       })
       .filter((part): part is { text: string } => part !== null);
 
     if (parts.length === 0) {
-      // Handle cases where no supported parts are found
       console.warn(
         `No supported parts found for message with role ${role}. Creating empty text part.`,
       );
@@ -115,16 +119,14 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
   };
 
   private _createStepFromChunk(
-    chunkResponse: GenerateContentResponse,
+    response: GenerateContentResponse,
     role: MessageRole = "assistant",
     usage?: UsageInfo,
   ): StepWithContent | null {
-    const text = chunkResponse.text; // Use the text getter which concatenates text parts
-    // TODO: Potentially handle function calls or other parts from the chunk if needed for StepWithContent
+    const text = response.text;
     if (text !== undefined && text !== "") {
-      // Check text is not undefined or empty
       return {
-        id: chunkResponse.responseId || "", // Use responseId if available
+        id: response.responseId || "",
         type: "text",
         content: text,
         role: role,
@@ -139,12 +141,10 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
   ): UsageInfo | undefined {
     if (!usageInfo) return undefined;
 
-    // Ensure counts are numbers, default to 0 if undefined/null
     const promptTokens = usageInfo.promptTokenCount ?? 0;
     const completionTokens = usageInfo.candidatesTokenCount ?? 0;
     const totalTokens = usageInfo.totalTokenCount ?? 0;
 
-    // Only return usage if there are actual tokens counted
     if (promptTokens > 0 || completionTokens > 0 || totalTokens > 0) {
       return { promptTokens, completionTokens, totalTokens };
     }
@@ -153,11 +153,11 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
   }
 
   generateText = async (
-    options: GenerateTextOptions<string>,
+    options: GoogleGenerateTextOptions,
   ): Promise<ProviderTextResponse<GenerateContentResponse>> => {
     const model = options.model;
     const contents = options.messages.map(this.toMessage);
-    const providerOptions = options.provider || {};
+    const providerOptions: GoogleProviderRuntimeOptions = options.provider || {};
 
     const config: GenerateContentConfig = {
       temperature: providerOptions.temperature,
@@ -169,31 +169,35 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
       ...(providerOptions.extraOptions && providerOptions.extraOptions),
     };
 
+    Object.keys(config).forEach(
+      (key) => (config as any)[key] === undefined && delete (config as any)[key],
+    );
+
     const generationParams: GenerateContentParameters = {
-      model: model,
       contents: contents,
-      ...(Object.keys(config).length > 0 && { config: config }),
+      model: model,
+      ...(Object.keys(config).length > 0 ? { config: config } : {}),
     };
 
     const result = await this.ai.models.generateContent(generationParams);
 
-    const responseText = result.text;
-    const usageInfo = result?.usageMetadata;
-    const finishReason = result.candidates?.[0]?.finishReason?.toString();
+    const response = result;
+
+    const responseText = response.text;
+    const usageInfo = response?.usageMetadata;
+    const finishReason = response.candidates?.[0]?.finishReason?.toString();
     const finalUsage = this._getUsageInfo(usageInfo);
 
     if (options.onStepFinish) {
-      const step = this._createStepFromChunk(result, "assistant", finalUsage);
+      const step = this._createStepFromChunk(response, "assistant", finalUsage);
       if (step) await options.onStepFinish(step);
     }
 
     const providerResponse: ProviderTextResponse<GenerateContentResponse> = {
-      provider: result,
-      text: responseText ?? "", // Ensure text is a string
+      provider: response,
+      text: responseText ?? "",
       usage: finalUsage,
       finishReason: finishReason,
-      // toolCalls: undefined,
-      // toolResults: undefined,
     };
 
     return providerResponse;
@@ -202,66 +206,66 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
   private async _processStreamChunk(
     chunkResponse: GenerateContentResponse,
     controller: ReadableStreamDefaultController<string>,
-    state: { accumulatedText: string; finalUsage?: UsageInfo },
-    options: StreamTextOptions<string>,
+    state: StreamProcessingState,
+    options: GoogleStreamTextOptions,
   ): Promise<void> {
     const textChunk = chunkResponse.text;
-    const chunkUsage = this._getUsageInfo(chunkResponse.usageMetadata);
 
-    // Capture usage if present
+    const chunkUsage = this._getUsageInfo(chunkResponse.usageMetadata);
+    const chunkFinishReason = chunkResponse.candidates?.[0]?.finishReason?.toString();
+
     if (chunkUsage) {
       state.finalUsage = chunkUsage;
     }
+    if (chunkFinishReason) {
+      state.finalFinishReason = chunkFinishReason;
+    }
 
-    // Enqueue text and call onChunk if applicable
     if (textChunk !== undefined && textChunk !== "") {
       controller.enqueue(textChunk);
       state.accumulatedText += textChunk;
       if (options.onChunk) {
-        const step = this._createStepFromChunk(chunkResponse, "assistant", chunkUsage);
+        const step = this._createStepFromChunk(chunkResponse, "assistant", undefined);
         if (step) await options.onChunk(step);
       }
     }
 
-    // Handle prompt feedback
     if (chunkResponse.promptFeedback && options.onError) {
       console.warn("Prompt feedback received:", chunkResponse.promptFeedback);
-      // Consider invoking onError or a specific feedback handler
     }
-
-    // TODO: Handle function calls here if needed
   }
 
-  // Helper to finalize the stream after processing all chunks
   private async _finalizeStream(
-    state: { accumulatedText: string; finalUsage?: UsageInfo },
-    options: StreamTextOptions<string>,
+    state: StreamProcessingState,
+    options: GoogleStreamTextOptions,
     controller: ReadableStreamDefaultController<string>,
   ): Promise<void> {
+    const finalUsage = state.finalUsage;
+
     if (options.onStepFinish) {
       const finalStep: StepWithContent = {
         id: "",
         type: "text",
         content: state.accumulatedText,
         role: "assistant",
-        usage: state.finalUsage,
+        usage: finalUsage,
       };
       await options.onStepFinish(finalStep);
     }
     if (options.onFinish) {
-      await options.onFinish({ text: state.accumulatedText });
+      const finishResponse: { text: string } = { text: state.accumulatedText };
+      await options.onFinish(finishResponse);
     }
     controller.close();
   }
 
   async streamText(
-    options: StreamTextOptions<string>,
+    options: GoogleStreamTextOptions,
   ): Promise<ProviderTextStreamResponse<GoogleGenerateContentStreamResult>> {
     const model = options.model;
     const contents = options.messages.map(this.toMessage);
-    const providerOptions = options.provider || {};
+    const providerOptions: GoogleProviderRuntimeOptions = options.provider || {};
 
-    // Prepare config similar to generateText
     const config: GenerateContentConfig = Object.entries({
       temperature: providerOptions.temperature,
       topP: providerOptions.topP,
@@ -278,27 +282,27 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
     }, {} as GenerateContentConfig);
 
     const generationParams: GenerateContentParameters = {
-      model: model,
       contents: contents,
-      ...(Object.keys(config).length > 0 && { config: config }),
-      // TODO: Add tools parameter mapping if options.tools is provided
+      model: model,
+      ...(Object.keys(config).length > 0 ? { config: config } : {}),
     };
 
-    // Get the async generator from the Google SDK
-    const streamGenerator = await this.ai.models.generateContentStream(generationParams);
+    const streamResult = await this.ai.models.generateContentStream(generationParams);
 
-    const state = this; // Bind the class instance to the state
-    const streamState = {
+    const state = this;
+    const streamState: StreamProcessingState = {
       accumulatedText: "",
       finalUsage: undefined as UsageInfo | undefined,
+      finalFinishReason: undefined as string | undefined,
     };
 
     const readableStream = new ReadableStream<string>({
       async start(controller) {
         try {
-          for await (const chunkResponse of streamGenerator) {
+          for await (const chunkResponse of streamResult) {
             await state._processStreamChunk(chunkResponse, controller, streamState, options);
           }
+
           await state._finalizeStream(streamState, options, controller);
         } catch (error) {
           console.error("Error during Google GenAI stream processing:", error);
@@ -310,12 +314,11 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
       },
       cancel(reason) {
         console.log("Google GenAI Stream cancelled:", reason);
-        // Note: The @google/genai SDK's async generator doesn't have explicit cancellation.
       },
     });
 
     return {
-      provider: streamGenerator, // Return the raw async generator
+      provider: streamResult,
       textStream: readableStream,
     };
   }
