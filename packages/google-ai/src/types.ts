@@ -9,7 +9,7 @@ export interface GoogleProviderRuntimeOptions
   extraOptions?: Record<string, any>;
 }
 
-// Define concrete types instead of using Omit with generics since it was causing 
+// Define concrete types instead of using Omit with generics since it was causing
 // "Type instantiation is excessively deep and possibly infinite".
 type BaseGoogleTextOptions = {
   messages: any[];
@@ -28,7 +28,6 @@ export type GoogleStreamTextOptions = BaseGoogleTextOptions & {
   onFinish?: (result: { text: string }) => void | Promise<void>;
   onError?: (error: any) => void | Promise<void>;
 };
-
 
 export type GoogleGenerateContentStreamResult = AsyncGenerator<
   GenerateContentResponse,
