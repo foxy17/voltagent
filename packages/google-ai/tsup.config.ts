@@ -14,4 +14,4 @@ export default defineConfig({
     options.keepNames = true;
     return options;
   },
-}); 
+});
