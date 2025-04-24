@@ -37,13 +37,29 @@ const agent = new Agent({
   llm: googleProvider,
   model: "gemini-1.5-pro-latest", // Specify the desired Google model
 });
+```
 
-//With Vertex AI
+### For using via VertexAi there are some nuances.
+
+1. It will only work on a server side instance, and not on web.
+2. The authentication needs to be handled via the [google-auth-libray](https://www.npmjs.com/package/google-auth-library)
+3. Authentication in Vertex is still and open issue on the official SDK. [link](https://github.com/googleapis/js-genai/issues/426), [link-2](https://github.com/googleapis/js-genai/issues/417)
+
+```typescript
 const googleVertexProvider = new GoogleGenAIProvider({
   vertexai: true,
   project: "your-project-id",
   location: "your-project-location",
+  googleAuthOptions: {
+    credentials: {
+      // never expose your private key in the code, this is just an example
+      private_key: "my-private-key",
+      // this is your service account email created in the google cloud console
+      client_email: "my-client-email",
+    },
+  },
 });
+
 const agent = new Agent({
   name: "Google Assistant",
   description: "A helpful and friendly assistant that can answer questions clearly and concisely.",
@@ -63,4 +79,4 @@ The `GoogleGenAIProvider` accepts the following options in its constructor:
 
 ## License
 
-MIT
+Licensed under the MIT License, Copyright © 2025-present VoltAgent.
