@@ -33,7 +33,7 @@ export type JSONSchemaType =
  * Represents a subset of a JSON Schema object that can be used by Gemini API.
  * The difference between this interface and the Schema interface is that this
  * interface is compatible with OpenAPI 3.1 schema objects while the
- * types.Schema interface @see {@link Schema} is used to make API call to
+ * types.Schema interface @see {@linkcode Schema} is used to make API call to
  * Gemini API.
  */
 export interface JSONSchema {
@@ -223,7 +223,7 @@ const jsonSchemaValidator: jsonSchemaValidatorType = z.lazy(() => {
  * @param zodSchema The Zod schema object to convert. Its structure is validated
  * against the {@link JSONSchema} interface before conversion to JSONSchema
  * schema.
- * @return The resulting Schema object. @see {@link Schema}
+ * @return The resulting Schema object. @see {@linkcode Schema}
  * @throws {ZodError} If the input `zodSchema` does not conform to the expected
  * JSONSchema structure during the initial validation step.
  * @see {@link JSONSchema} The interface used to validate the input `zodSchema`.
@@ -483,7 +483,7 @@ export interface ZodFunction {
  * schema. see {@link ZodFunction} for more details.
  * @return The resulting FunctionDeclaration object. @see {@link FunctionDeclaration}
  * @throws {ZodError} If the input `zodFunction` contains paramters that can not
- * be converteed to Schema object @see {@link Schema}
+ * be converteed to Schema object @see {@linkcode Schema}
  * @throws {Error} If the input `zodFunction` contains more than one parameter
  * or the parameter is not object.
  */
