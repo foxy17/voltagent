@@ -32,7 +32,8 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
   private ai: GoogleGenAI;
 
   constructor(options: GoogleGenAIOptions) {
-    const hasApiKey = !!options?.apiKey;
+    const apiKey = options?.apiKey || process.env.GEMINI_API_KEY;
+    const hasApiKey = !!apiKey;
     const hasVertexAIConfig = options.vertexai && options.project && options.location;
 
     if (!hasApiKey && !hasVertexAIConfig) {
@@ -47,7 +48,7 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
       );
     }
 
-    this.ai = new GoogleGenAI(options);
+    this.ai = new GoogleGenAI({ ...options, apiKey });
 
     this.generateText = this.generateText.bind(this);
     this.streamText = this.streamText.bind(this);
