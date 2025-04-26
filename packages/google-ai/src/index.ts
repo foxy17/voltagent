@@ -417,7 +417,11 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
     return providerResponse;
   }
 
+  /**
+   * streamObject is not supported for GoogleGenAIProvider because the Google SDK streams partial text,
+   * making it impossible to convert into a partial object.
+   */
   async streamObject(_options: any): Promise<any> {
-    throw new Error("streamObject is not implemented for GoogleGenAIProvider yet.");
+    throw new Error("streamObject is not supported for GoogleGenAIProvider");
   }
 }
