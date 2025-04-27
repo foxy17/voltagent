@@ -19,14 +19,14 @@ import type {
   StepWithContent,
   UsageInfo,
 } from "@voltagent/core";
-import { ZodObject, type ZodRawShape, type z } from "zod";
+import type { z } from "zod";
 import type {
   GoogleGenerateContentStreamResult,
   GoogleGenerateTextOptions,
   GoogleProviderRuntimeOptions,
   GoogleStreamTextOptions,
 } from "./types";
-import { responseSchemaFromZodType } from "./utils/schema_helper";
+import { isZodObject, responseSchemaFromZodType } from "./utils/schema_helper";
 
 type StreamProcessingState = {
   accumulatedText: string;
@@ -339,11 +339,11 @@ export class GoogleGenAIProvider implements LLMProvider<string> {
     const contents = options.messages.map(this.toMessage);
     const providerOptions: GoogleProviderRuntimeOptions = options.provider || {};
 
-    if (!(options.schema instanceof ZodObject)) {
-      throw new Error("Schema provided to generateObject must be an instance of ZodObject.");
+    if (!isZodObject(options.schema)) {
+      throw new Error("Schema provided to generateObject must be a valid ZodObject.");
     }
 
-    const zodObjectSchema = options.schema as ZodObject<ZodRawShape>;
+    const zodObjectSchema = options.schema;
 
     let googleSchema: Schema | undefined;
     try {

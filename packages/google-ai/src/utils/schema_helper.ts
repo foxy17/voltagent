@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { type ZodObject, type ZodRawShape, z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 import { type FunctionDeclaration, type Schema, Type } from "@google/genai";
@@ -518,3 +518,12 @@ export function functionDeclarationFromZodFunction(
 
   return functionDeclaration;
 }
+
+export const isZodObject = (schema: any): schema is ZodObject<ZodRawShape> => {
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    typeof schema.shape === "object" &&
+    schema.shape !== null
+  );
+};
