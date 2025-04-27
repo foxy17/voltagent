@@ -213,20 +213,14 @@ const jsonSchemaValidator: jsonSchemaValidatorType = z.lazy(() => {
 /**
  * Converts a Zod object into the Gemini schema format.
  *
- * [Experimental] This function first validates the structure of the input
- * `zodSchema` object against an internal representation of JSON Schema (see
- * {@link JSONSchema}).
- * Any mismatch in data types and inrecongnized properties will cause an error.
- *
  * @param vertexai If true, targets Vertex AI schema format; otherwise, targets
  * the Gemini API format.
  * @param zodSchema The Zod schema object to convert. Its structure is validated
- * against the {@link JSONSchema} interface before conversion to JSONSchema
+ * against the interface before conversion to JSONSchema
  * schema.
- * @return The resulting Schema object. @see {@linkcode Schema}
- * @throws {ZodError} If the input `zodSchema` does not conform to the expected
+ * @return The resulting Schema object.
+ * @throws If the input `zodSchema` does not conform to the expected
  * JSONSchema structure during the initial validation step.
- * @see {@link JSONSchema} The interface used to validate the input `zodSchema`.
  */
 export function responseSchemaFromZodType(vertexai: boolean, zodSchema: z.ZodType): Schema {
   return processZodSchema(vertexai, zodSchema);
@@ -480,10 +474,10 @@ export interface ZodFunction {
  * the Gemini API format.
  * @param zodFunction The zodFunction object for passing the name and zod
  *     function
- * schema. see {@link ZodFunction} for more details.
- * @return The resulting FunctionDeclaration object. @see {@link FunctionDeclaration}
+ * schema.
+ * @return The resulting FunctionDeclaration object. @see {@linkcode FunctionDeclaration}
  * @throws {ZodError} If the input `zodFunction` contains paramters that can not
- * be converteed to Schema object @see {@linkcode Schema}
+ * be converteed to Schema object
  * @throws {Error} If the input `zodFunction` contains more than one parameter
  * or the parameter is not object.
  */
